@@ -16,8 +16,8 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    int status = system(cmd);
+    return status == 0;
 }
 
 /**
@@ -43,11 +43,9 @@ bool do_exec(int count, ...)
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
+        //printf("Command %d: %s\n", i, command[i]);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
 /*
  * TODO:
@@ -58,10 +56,38 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+    int status = -1;
+    pid_t child_pid = fork();
+    if ( child_pid == -1 )
+    {
+        int error_code = errno;
+        fprintf(stderr, "Could not create child, (%d), %s\n", error_code, strerror(error_code));
+        exit(1);
+    }
+
+    if ( child_pid == 0 )
+    {
+        //Child process
+        int return_code = execv(command[0], command );
+        if ( return_code != 0 )
+        {
+            exit(2);
+        }
+    }
+    else
+    {
+        //parent wait for child process
+        waitpid(child_pid, &status, 0);
+        if ( WIFEXITED(status))
+        {
+            status = WEXITSTATUS(status);  
+            //fprintf(stdout, "Child exited with status- code %d\n", status);
+        }
+    }
 
     va_end(args);
 
-    return true;
+    return status == 0;
 }
 
 /**
@@ -80,9 +106,6 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
 
 /*
@@ -93,7 +116,71 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
+    int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+    if ( fd == -1 )
+    {
+        int error_code = errno;
+        fprintf(stderr, "Could not open/create file, (%d), %s\n", error_code, strerror(error_code));
+        exit(1);
+    }
+
+    int status = 0;
+    pid_t child_pid = fork();
+    if ( child_pid == -1 )
+    {
+        int error_code = errno;
+        fprintf(stderr, "Could not create child, (%d), %s\n", error_code, strerror(error_code));
+        exit(2);
+    }
+
+    if ( child_pid == 0 )
+    {
+        //Child process
+
+        //duplicate the parent filedescriptor to child stdout (fd = 1)
+        if ( dup2(fd, 1) < 0 ) 
+        { 
+            int error_code = errno;
+            fprintf(stderr, "Could not redirect std- output to file, (%d), %s", error_code, strerror(error_code));
+            exit(3);
+        }
+
+        int return_code = close(fd);
+        if ( return_code == -1 )
+        {
+            int error_code = errno;
+            fprintf(stderr, "Child: Could not close file, (%d), %s\n", errno, strerror(error_code));
+            exit(4);
+        }
+
+        return_code = execv(command[0], command );
+        if ( return_code != 0 )
+        {
+            exit(5);
+        }
+    }
+    else
+    {
+        //parent wait for child process
+        waitpid(child_pid, &status, 0);
+        if ( WIFEXITED(status))
+        {
+            status = WEXITSTATUS(status);  
+            //fprintf(stdout, "Child exited with status- code %d\n", status);
+        }
+    
+        int return_code = close(fd);
+
+        if ( return_code == -1 )
+        {
+            int error_code = errno;
+            fprintf(stderr, "Parent: Could not close file, (%d), %s\n", errno, strerror(error_code));
+            exit(4);
+        }
+    }
+
+   
     va_end(args);
 
-    return true;
+    return status == 0;
 }
