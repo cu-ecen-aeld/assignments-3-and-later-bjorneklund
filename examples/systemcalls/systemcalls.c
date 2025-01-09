@@ -130,6 +130,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     {
         int error_code = errno;
         fprintf(stderr, "Could not create child, (%d), %s\n", error_code, strerror(error_code));
+        close(fd);
         exit(2);
     }
 
